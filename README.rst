@@ -12,43 +12,6 @@ A database driver for Django to connect to an Informix database via JDBC.
   already exists.
 
 
-Configure local environment
----------------------------
-
-The following environment variables should exist:
-
-INFORMIXDIR
-    The path to the Informix client install directory
-
-INFORMIXSERVER
-    The name of the Informix service to which we need to connect
-
-INFORMIXSQLHOSTS
-    The path to the ``sqlhosts`` file that the Informix driver should use
-
-LD_LIBRARY_PATH
-    The path(s) to the various Informix library files: Usually
-    ``$INFORIMIXDIR/lib:$INFORMIXDIR/lib/cli:$IMFORMIXDIR/lib/esql``
-
-DB_LOCALE
-    In case of ``Database locale information mismatch.`` error during connection,
-    you should specify your database locale, e.g. ``DB_LOCALE=en_US.8859-15``
-
-You will also need to add an entry within your ``sqlhosts`` file for each remote/local Informix
-server connection in the following format::
-
-    <INFORMIX_SERVER_NAME>    onsoctcp     <INFORMIX_HOST_NAME>    <INFORMIX_SERVICE_NAME>
-
-For example::
-
-    dev    onsoctcp    localhost    9088
-
-You may alternatively use a symbolic name in that line in place of the port number, typically ``sqlexec`` and
-then configure the port number in the ``/etc/services`` file::
-
-    sqlexec    9088/tcp
-
-
 Configure settings.py
 ---------------------
 
