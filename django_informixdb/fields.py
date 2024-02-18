@@ -78,3 +78,32 @@ class CharToBooleanField(models.BooleanField):
 
     def get_prep_value(self, value):
         return value
+
+class CharToBooleanField2(CharToBooleanField):
+    """ 
+    Custom CharToBooleanField. 
+    Instead using values Y/N uses "t"/"f" 
+    """
+
+    def from_db_value(self, value, expression, connection, *ignore):
+        if self.null and value is None:
+            return None
+        if value in (True, False):
+            return value
+        return value == 't'
+
+    def get_db_prep_value(self, value, connection, prepared=False):
+        if self.null and value in self.empty_values:
+            return None
+        if value in (True, False):
+            # 1/0 are equal to True/False. bool() converts former to latter.
+            return 't' if bool(value) else 'f'
+        if value in ("t", "True", "1"):
+            return 't'
+        if value in ("f", "False", "0"):
+            return 'f'
+        raise ValidationError(
+            self.error_messages["invalid_nullable" if self.null else "invalid"],
+            code="invalid",
+            params={"value": value},
+        )

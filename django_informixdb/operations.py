@@ -111,8 +111,8 @@ class DatabaseOperations(BaseDatabaseOperations):
         return value
 
     def adapt_datefield_value(self, value):
-        # default db format?
-        return value.strftime('%d/%m/%Y') if value else value
+        date_format = getattr(settings, 'DEFAULT_DATE_FORMAT', '%Y-%m-%d')
+        return value.strftime(date_format) if value else value
 
     def adapt_datetimefield_value(self, value):
         # TODO: fix this, convert to DATETIME YEAR TO FRACTION(5)
