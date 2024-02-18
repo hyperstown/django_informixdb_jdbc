@@ -205,7 +205,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             #     raise ImproperlyConfigured('cannot find Informix driver at {}'.format(options['DRIVER']))
         # conn_params['OPTIONS'] = options
         
-        if 'DRIVER' not in conn_params or conn_params['DRIVER'] is None:
+        if 'DRIVERS' not in conn_params or conn_params['DRIVERS'] is None:
             raise ImproperlyConfigured('DRIVER is a required setting for an informix connection')
         
         for driver in conn_params['DRIVERS']:
