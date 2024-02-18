@@ -1,4 +1,4 @@
-Django InformixDB
+Django InformixDB (JDBC edition)
 ==================
 
 A database driver for Django to connect to an Informix database via JDBC.
