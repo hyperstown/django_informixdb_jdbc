@@ -47,7 +47,7 @@ class InformixTypes(Enum):
     SQL_TYPE_SERIAL = 6, 'AutoField'
     SQL_TYPE_DATE = 7, 'DateField'
     SQL_TYPE_MONEY = 8, 'DecimalField'
-    SQL_TYPE_NULL = 9, None
+    #SQL_TYPE_NULL = 9, None
     SQL_TYPE_DATETIME = 10, 'DateTimeField'
     SQL_TYPE_BYTE = 11, 'BinaryField'
     SQL_TYPE_TEXT = 12, 'TextField'
@@ -57,10 +57,10 @@ class InformixTypes(Enum):
     SQL_TYPE_NVARCHAR = 16, 'CharField'
     SQL_TYPE_INT8 = 17, 'IntegerField'
     SQL_TYPE_SERIAL8 = 18, 'AutoField'
-    SQL_TYPE_SET = 19, None
-    SQL_TYPE_MASK = 31, None
+    #SQL_TYPE_SET = 19, None
+    #SQL_TYPE_MASK = 31, None
     SQL_TYPE_UDTVAR = 40, 'CharField'
-    SQL_TYPE_UDTFIXED = 41, None
+    #SQL_TYPE_UDTFIXED = 41, None # None will result an error
     SQL_TYPE_LVARCHAR = 43, 'CharField'
     SQL_TYPE_BOOLEAN = 45, 'BoolField'
     SQL_TYPE_BIGINT = 52, 'BigIntegerField'

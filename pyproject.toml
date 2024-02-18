@@ -6,7 +6,7 @@ requires = [
 build-backend = 'setuptools.build_meta'
 
 [project]
-name = "django_informixdb"
+name = "django_informixdb_jdbc"
 description = "A database driver for Django to connect to an Informix db via ODBC"
 keywords = [
     "django",
@@ -29,7 +29,7 @@ dynamic = ["version", "readme"]
 
 dependencies = [
     "django >= 3.2.0, < 5",
-    "pyodbc >= 4.0.0, < 5"
+    "jaydebeapi >= 1.2.3"
 ]
 
 [optional-dependencies]
@@ -38,12 +38,12 @@ all =['%(test)s']
 test = ['coverage']
 
 [[project.authors]]
-name = "Reecetech"
-email = "opensource@reecetech.com.au"
+name = "hyperstown"
+email = "hyperstown@gmail.com"
 
 [project.urls]
-Homepage = "https://github.com/reecetech/django_informixdb"
-Repository = "https://github.com/reecetech/django_informixdb"
+Homepage = "https://github.com/hyperstown/django_informixdb_jdbc"
+Repository = "https://github.com/hyperstown/django_informixdb_jdbc"
 
 [project.license]
 text = "APLv2"

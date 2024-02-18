@@ -3,13 +3,11 @@ informix database backend for Django.
 
 Requires informixdb
 """
-import logging
 import os
-import sys
-import platform
 import time
-import random
-import re
+import atexit
+import logging
+import platform
 
 from django.db import connections
 from django.db.backends.base.base import BaseDatabaseWrapper
@@ -25,12 +23,8 @@ from .operations import DatabaseOperations
 from .features import DatabaseFeatures
 from .schema import DatabaseSchemaEditor
 
-try:
-    import pyodbc
-except ImportError as e:
-    e = sys.exc_info()[1]
-    raise ImproperlyConfigured("Error loading pyodbc module:{}".format(e))
-
+import jpype
+import jaydebeapi
 
 logger = logging.getLogger(__name__)
 
@@ -52,21 +46,7 @@ def decoder(value, encodings=('utf-8',)):
 
 class DatabaseWrapper(BaseDatabaseWrapper):
     vendor = 'informixdb'
-    Database = pyodbc
-
-    DRIVER_MAP = {
-        'DARWIN': '/Applications/IBM/informix/lib/cli/iclit09b.dylib',
-        'LINUX': '/opt/IBM/informix/lib/cli/iclit09b.so',
-        'WINDOWS32bit': 'IBM INFORMIX ODBC DRIVER (32-bit)',
-        'WINDOWS64bit': 'IBM INFORMIX ODBC DRIVER (64-bit)',
-    }
-
-    ISOLATION_LEVEL = {
-        'READ_COMMITED': pyodbc.SQL_TXN_READ_COMMITTED,
-        'READ_UNCOMMITTED': pyodbc.SQL_TXN_READ_UNCOMMITTED,  # Dirty Read
-        'REPEATABLE_READ': pyodbc.SQL_TXN_REPEATABLE_READ,
-        'SERIALIZABLE': pyodbc.SQL_TXN_SERIALIZABLE,
-    }
+    Database = jaydebeapi
 
     data_types = {
         'AutoField': 'serial',
@@ -172,6 +152,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = self.introspection_class(self)
         self.validation = self.validation_class(self)
 
+        atexit.register(self.shut_down_connection)
+
     def validate_connection(self):
         """
         This method is invoked at the start of a request to verify an existing
@@ -205,56 +187,62 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         settings = self.settings_dict
 
         if 'DSN' not in settings:
-            for k in ['NAME', 'SERVER', 'USER', 'PASSWORD']:
+            for k in ['NAME', 'SERVER', 'USER', 'PASSWORD', 'DRIVERS']:
                 if k not in settings:
                     raise ImproperlyConfigured('{} is a required setting for an informix connection'.format(k))
         conn_params = settings.copy()
 
         # Ensure the driver is set in the options
-        options = conn_params.get('OPTIONS', {})
-        if 'DRIVER' not in options or options['DRIVER'] is None:
-            options['DRIVER'] = self.get_driver_path()
-        if platform.system().upper() != 'WINDOWS':
-            sqlhosts = os.environ.get('INFORMIXSQLHOSTS')
-            if not sqlhosts or not os.path.exists(sqlhosts):
-                raise ImproperlyConfigured('Cannot find Informix sqlhosts at {}'.format(sqlhosts))
-            if not os.path.exists(options['DRIVER']):
-                raise ImproperlyConfigured('cannot find Informix driver at {}'.format(options['DRIVER']))
-        conn_params['OPTIONS'] = options
+        # options = conn_params.get('OPTIONS', {})
+        # if 'DRIVER' not in options or options['DRIVER'] is None:
+        #     raise ImproperlyConfigured('DRIVER is a required setting for an informix connection')
+            # options['DRIVER'] = self.get_driver_path()
+        # if platform.system().upper() != 'WINDOWS':
+            # sqlhosts = os.environ.get('INFORMIXSQLHOSTS')
+            # if not sqlhosts or not os.path.exists(sqlhosts):
+            #     raise ImproperlyConfigured('Cannot find Informix sqlhosts at {}'.format(sqlhosts))
+            # if not os.path.exists(options['DRIVER']):
+            #     raise ImproperlyConfigured('cannot find Informix driver at {}'.format(options['DRIVER']))
+        # conn_params['OPTIONS'] = options
+        
+        if 'DRIVER' not in conn_params or conn_params['DRIVER'] is None:
+            raise ImproperlyConfigured('DRIVER is a required setting for an informix connection')
+        
+        for driver in conn_params['DRIVERS']:
+            if not os.path.exists(driver):
+                raise ImproperlyConfigured('cannot find Informix driver at {}'.format(driver))
 
-        conn_params['AUTOCOMMIT'] = False if 'AUTOCOMMIT' not in conn_params else conn_params['AUTOCOMMIT']
+        conn_params['AUTOCOMMIT'] = conn_params.get("AUTOCOMMIT", False)
 
         return conn_params
 
+    def _normalize_pv(self, param_value):
+        if isinstance(param_value, list):
+            return ",".join(param_value)
+        return param_value
+
     def get_new_connection(self, conn_params):
-        parts = [
-            'Driver={{{}}}'.format(conn_params['OPTIONS']['DRIVER']),
-        ]
+        driver_name = "com.informix.jdbc.IfxDriver"
+        url = "jdbc:informix-sqli://{0}:{1}/{2}:INFORMIXSERVER={3}".format(
+            conn_params['HOST'], conn_params['PORT'], conn_params['NAME'], conn_params['SERVER']
+        )
 
-        if 'DSN' in conn_params:
-            parts.append('DSN={}'.format(conn_params['DSN']))
-        if 'SERVER' in conn_params:
-            parts.append('Server={}'.format(conn_params['SERVER']))
-        if 'NAME' in conn_params and conn_params['NAME'] is not None:
-            parts.append('Database={}'.format(conn_params['NAME']))
-        elif conn_params['NAME'] is None:
-            parts.append('CONNECTDATABASE=no')
-        if 'USER' in conn_params:
-            parts.append('Uid={}'.format(conn_params['USER']))
-        if 'PASSWORD' in conn_params:
-            parts.append('Pwd={}'.format(conn_params['PASSWORD']))
-        if 'CPTIMEOUT' in conn_params['OPTIONS']:
-            parts.append('CPTimeout={}'.format(conn_params['OPTIONS']['CPTIMEOUT']))
+        for param_key, param_value in conn_params.get('PARAMETERS', {}).items():
+            url += f";{param_key.upper()}={self._normalize_pv(param_value)}"
 
-        connection_string = ';'.join(parts)
-        logging.debug('Connecting to Informix')
-        self.connection = self._get_connection_with_retries(connection_string, conn_params)
-        self.connection.setencoding(encoding='UTF-8')
+        username = conn_params['USER']
+        password = conn_params['PASSWORD']
+        jars = conn_params['DRIVERS']
 
-        # This will set database isolation level at connection level
-        if 'ISOLATION_LEVEL' in conn_params['OPTIONS']:
-            self.connection.set_attr(pyodbc.SQL_ATTR_TXN_ISOLATION,
-                                     self.ISOLATION_LEVEL[conn_params['OPTIONS']['ISOLATION_LEVEL']])
+        if jpype.isJVMStarted() and not jpype.isThreadAttachedToJVM():
+            jpype.attachThreadToJVM()
+            jpype.java.lang.Thread.currentThread().setContextClassLoader(
+                jpype.java.lang.ClassLoader.getSystemClassLoader()
+            )
+        
+        self.connection = jaydebeapi.connect(driver_name, url, [username, password], jars=jars)
+        
+        #self.connection.setencoding(encoding='UTF-8')
 
         # This will set SQL_C_CHAR, SQL_C_WCHAR and SQL_BINARY to 32000
         # this max length is actually just what the database internally
@@ -264,56 +252,26 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         # truncate values greater than the limit.
         self.connection.maxwrite = 32000
 
-        self.connection.add_output_converter(-101, lambda r: r.decode('utf-8'))  # Constraints
-        self.connection.add_output_converter(-391, lambda r: r.decode('utf-16-be'))  # Integrity Error
+        # self.connection.add_output_converter(-101, lambda r: r.decode('utf-8'))  # Constraints
+        # self.connection.add_output_converter(-391, lambda r: r.decode('utf-16-be'))  # Integrity Error
 
-        self.connection.add_output_converter(pyodbc.SQL_CHAR, self._output_converter)
-        self.connection.add_output_converter(pyodbc.SQL_WCHAR, self._output_converter)
-        self.connection.add_output_converter(pyodbc.SQL_VARCHAR, self._output_converter)
-        self.connection.add_output_converter(pyodbc.SQL_WVARCHAR, self._output_converter)
-        self.connection.add_output_converter(pyodbc.SQL_LONGVARCHAR, self._output_converter)
-        self.connection.add_output_converter(pyodbc.SQL_WLONGVARCHAR, self._output_converter)
+        # self.connection.add_output_converter(pyodbc.SQL_CHAR, self._output_converter)
+        # self.connection.add_output_converter(pyodbc.SQL_WCHAR, self._output_converter)
+        # self.connection.add_output_converter(pyodbc.SQL_VARCHAR, self._output_converter)
+        # self.connection.add_output_converter(pyodbc.SQL_WVARCHAR, self._output_converter)
+        # self.connection.add_output_converter(pyodbc.SQL_LONGVARCHAR, self._output_converter)
+        # self.connection.add_output_converter(pyodbc.SQL_WLONGVARCHAR, self._output_converter)
 
         if 'LOCK_MODE_WAIT' in conn_params['OPTIONS']:
             self.set_lock_mode(wait=conn_params['OPTIONS']['LOCK_MODE_WAIT'])
 
         return self.connection
 
-    def _get_connection_with_retries(self, connection_string, conn_params):
-        """
-        Attempt to open a connection, retrying on failure with an exponential backoff.
-        """
-        retry_params = conn_params.get("CONNECTION_RETRY", {})
-        max_attempts = retry_params.get("MAX_ATTEMPTS", 1)
-        wait_min = retry_params.get("WAIT_MIN", 0)
-        wait_max = retry_params.get("WAIT_MAX", 1000)
-        multiplier = retry_params.get("WAIT_MULTIPLIER", 25)
-        exp_base = retry_params.get("WAIT_EXP_BASE", 2)
-        errors_to_retry = retry_params.get("ERRORS", ["-908", "-930", "-27001"])
-        retryable = re.compile(r"\((" + "|".join(errors_to_retry) + r")\)")
-
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                conn = pyodbc.connect(connection_string, autocommit=conn_params["AUTOCOMMIT"],
-                                      timeout=conn_params["OPTIONS"].get("CONN_TIMEOUT", 0))
-            except pyodbc.Error as err:
-                if attempt < max_attempts and retryable.search(err.args[1]):
-                    wait = random.uniform(
-                        wait_min,
-                        max(wait_min, min(wait_max, multiplier * exp_base ** (attempt - 1))),
-                    )
-                    logger.info(
-                        f'failed to connect to db on attempt {attempt}: "{err}"; '
-                        f"waiting {wait:.1f} ms before trying again"
-                    )
-                    time.sleep(wait / 1000)
-                    continue
-                else:
-                    raise
-            else:
-                return conn
+    def shut_down_connection(self):
+        if jpype.isJVMStarted():
+            logger.debug("Shutting down JVM")
+            #jpype.shutdownJVM() # hangs after many searches..
+            os._exit(3) # it's not recommended but only this works reliably 
 
     def _unescape(self, raw):
         """
@@ -360,14 +318,14 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         # cursor: https://github.com/mkleehammer/pyodbc/issues/585
         try:
             cursor = self.connection.cursor()
-        except pyodbc.Error as exc:
+        except BaseException as exc: # TODO replace with jdbc sql exceptions
             logger.info(f"error creating cursor: {exc}")
             return False
 
         try:
             cursor.execute(self._validation_query)
             return True
-        except pyodbc.Error as exc:
+        except BaseException as exc: # TODO replace with jdbc sql exceptions
             logger.info(f"error executing query: {exc}")
             return False
         finally:
@@ -378,7 +336,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             # depends on whether `cursor.execute` succeeded or not.
             try:
                 cursor.close()
-            except pyodbc.Error as exc:
+            except BaseException as exc: # TODO replace with jdbc sql exceptions
                 logger.info(f"error closing cursor: {exc}")
                 return False
 
@@ -520,7 +478,7 @@ class CursorWrapper(object):
             row = self.format_row(row)
         # Any remaining rows in the current set must be discarded
         # before changing autocommit mode when you use FreeTDS
-        self.cursor.nextset()
+        #self.cursor.nextset()
         return row
 
     def fetchmany(self, chunk):

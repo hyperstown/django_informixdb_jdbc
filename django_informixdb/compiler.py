@@ -1,6 +1,6 @@
-from django.db.models.sql import compiler
-from django.db.models import Value
 import django
+from django.db.models.sql import compiler
+from django.db.models import Case, Value
 
 
 IS_DJANGO_V4 = django.VERSION >= (4, 0)
@@ -24,9 +24,13 @@ class SQLCompiler(compiler.SQLCompiler):
         # fix informix count function and Case When
         select = self.query.annotation_select
         for agg in select.values():
+            if isinstance(agg, Case):
+                db_type = agg.output_field.cast_db_type(self.connection)
+                agg.template = "CASE %(cases)s ELSE CAST(%(default)s AS {}) END".format(db_type)
+                for case in agg.cases:
+                    case.template = "WHEN %(condition)s THEN CAST(%(result)s as {})".format(db_type)
             if getattr(agg, 'function', '') == 'COUNT':
                 agg.template = '%s::int' % agg.template
-                
         raw_sql, fields = super(SQLCompiler, self).as_sql(False, with_col_aliases)
 
         # special dialect to return first n rows

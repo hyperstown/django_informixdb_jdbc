@@ -1,7 +1,7 @@
 Django InformixDB
 ==================
 
-A database driver for Django to connect to an Informix database via pyodbc.
+A database driver for Django to connect to an Informix database via JDBC.
 
 **Some limitations**:
 
@@ -59,16 +59,17 @@ Django’s settings.py uses the following to connect to an Informix database:
     'default': {
         'ENGINE': 'django_informixdb',
         'NAME': 'myproject',
-        'SERVER': 'ifxserver',
-        'USER' : 'testuser',
+        'USER': 'ifxserver',
         'PASSWORD': 'passw0rd',
-        'OPTIONS': {
-            'DRIVER': '/path/to/iclit09b.so'. # Or iclit09b.dylib on macOS
-            'CPTIMEOUT': 120,
-            'CONN_TIMEOUT': 120,
-            'ISOLATION_LEVEL': 'READ_UNCOMMITTED',
-            'LOCK_MODE_WAIT': 0,
-            'VALIDATE_CONNECTION': True,
+        'HOST': 'localhost',
+        'PORT': '61012',
+        'SERVER': 'informix',
+        'DRIVERS' : [
+            "/path/to/jdbc-driver.jar",
+            # ... and other JAR extensions (if needed)
+        ],
+        'PARAMETERS': {
+            'CLIENT_LOCALE': 'en_us.57372',
         },
         'CONNECTION_RETRY': {
             'MAX_ATTEMPTS': 10,
@@ -78,100 +79,6 @@ Django’s settings.py uses the following to connect to an Informix database:
             'CREATE_DB': False
         }
     }
-
-CPTIMEOUT
-    This will set connection pooling timeout.
-    Possible values::
-
-        0 - Turn off connection pooling
-        nn - timeout set nn seconds
-
-CONN_TIMEOUT
-    This will set timeout for operations on connections (connection, ??closing??, we're not sure).
-    Possible values::
-
-        0 - Default timeout to the database (which could mean no timeout)
-        nn - timeout set nn seconds
-
-ISOLATION_LEVEL
-    This will set database isolation level at connection level
-    Possible values::
-
-        READ_COMMITED
-        READ_UNCOMMITTED
-        SERIALIZABLE
-
-LOCK_MODE_WAIT
-    This will set database LOCK MODE WAIT at connection level
-    Application can use this property to override the default server
-    process for accessing a locked row or table.
-    The default value is 0 (do not wait for the lock).
-    Possible values::
-
-        -1 - WAIT until the lock is released.
-        0 - DO NOT WAIT, end the operation, and return with error.
-        nn - WAIT for nn seconds for the lock to be released.
-
-VALIDATE_CONNECTION
-    Whether existing connections should be validated at the start of the request. Defaults to
-    `False`.
-
-VALIDATION_INTERVAL
-    How often in seconds to revalidate connections if `VALIDATE_CONNECTION` is enabled. Defaults to
-    `300` (5 minutes).
-
-VALIDATION_QUERY
-    Query used to validate whether a connection is usable. Defaults to
-    `"SELECT 1 FROM sysmaster:sysdual"`.
-
-CONNECTION_RETRY
-    When opening a new connection to the database, automatically retry up to ``MAX_ATTEMPTS`` times
-    in the case of errors. Only error codes in ``ERRORS`` will trigger a retry. The wait time
-    between retries is calculated using an exponential backoff with jitter formula::
-
-        random_between(WAIT_MIN, min(WAIT_MAX, WAIT_MULTIPLIER * WAIT_EXP_BASE ** (attempt - 1)))
-
-    Defaults (wait times are in milliseconds)::
-
-        MAX_ATTEMPTS: 1  # this implies no retries
-        WAIT_MIN: 0
-        WAIT_MAX: 1000
-        WAIT_MULTIPLIER: 25
-        WAIT_EXP_BASE: 2
-        ERRORS: ['-908', '-930', '-27001']
-
-    Each of these settings can be overridden in the ``CONNECTION_RETRY`` section of the database
-    configuration in ``settings.py``. For example::
-
-        DATABASES = {
-           'default': {
-               'ENGINE': 'django_informixdb',
-               'CONNECTION_RETRY': {
-                   'MAX_ATTEMPTS': 10,
-                   'WAIT_MIN': 0,
-                   'WAIT_MAX': 500,
-               },
-               # ...
-            },
-         }
-
-    The error codes that are retried by default correspond to the following errors:
-
-    * ``-908 Attempt to connect to database server (servername) failed``
-    * ``-930 Cannot connect to database server servername``
-    * ``-27001 Read error occurred during connection attempt``
-
-    These errors are often seen when the database server is too busy, too many clients are
-    attempting to connect at the same time or a network firewall has chopped the connection.
-
-
-.. note:
-    The ``DRIVER`` option is optional, default locations will be used per platform if it is not provided.
-
-.. note:
-    The ``TEST`` option sets test parametes.  Use ``NAME`` to override the name of the test database
-    and set ``CREATE_DB`` to ``False`` to prevent Django from attempting to create a new test
-    database.
 
 Using with the Docker Informix Dev Database
 -------------------------------------------
@@ -304,7 +211,7 @@ Try using the helper script `test-in-docker.sh`, or inspect the script and adapt
 Requirements: Docker 19.03.2 or newer and Docker Compose 1.24.1 or newer.
 
 
-Release History
+Upstream Release History
 ---------------
 
 Version 1.11.4
@@ -380,3 +287,13 @@ Version 1.1.0
 Version 1.0.0
 
 - Initial public release
+
+
+**TODO**:
+
+- Update tests from pyodbc to jdbc 
+
+
+**NOTE**:
+
+Contributions and suggestions are very welcome.

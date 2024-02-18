@@ -2,14 +2,21 @@ import datetime
 import decimal
 import uuid
 
+from django.conf import settings
+from django.utils import timezone
+from django.utils.encoding import force_str
 from django.db.backends.base.operations import BaseDatabaseOperations
 from django.db.models import Aggregate
 from django.db.backends import utils as backend_utils
 from django.utils.dateparse import parse_date, parse_datetime, parse_time
 
+from .fields import CharToBooleanField
+
 
 class DatabaseOperations(BaseDatabaseOperations):
+
     compiler_module = "django_informixdb.compiler"
+    cast_char_field_without_max_length = "LVARCHAR" # No text equivalent
 
     def quote_name(self, name):
         return name
@@ -28,7 +35,7 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def lookup_cast(self, lookup_type, internal_type=None):
         if lookup_type in ('iexact', 'icontains', 'istartswith', 'iendswith'):
-            return "LOWER(%s)"
+            return "LOWER(CAST(%s as lvarchar))"
         return "%s"
 
     def check_expression_support(self, expression):
@@ -45,11 +52,6 @@ class DatabaseOperations(BaseDatabaseOperations):
             'day': 'DAY'
         }
         return "%s(%s)" % (sqlmap[lookup_type], field_name)
-
-    def year_lookup_bounds_for_date_field(self, value):
-        first = '%s-01-01' % value
-        last = '%s-12-31' % value
-        return [first, last]
 
     def start_transaction_sql(self):
         return "BEGIN WORK"
@@ -109,13 +111,17 @@ class DatabaseOperations(BaseDatabaseOperations):
         return value
 
     def adapt_datefield_value(self, value):
-        return value
+        # default db format?
+        return value.strftime('%d/%m/%Y') if value else value
 
     def adapt_datetimefield_value(self, value):
         # TODO: fix this, convert to DATETIME YEAR TO FRACTION(5)
         # value is like '2016-05-23 12:26:56.111909+00:00',
         # since informix only support fraction(5),
         # we need remove the last digit for micro-seconds
+        if settings.USE_TZ and value:
+            tz = timezone.get_current_timezone()
+            value = timezone.make_naive(value, tz)
         return value.strftime('%Y-%m-%d %H:%M:%S.f')[:-1] if value else value
 
     def adapt_timefield_value(self, value):
@@ -132,6 +138,33 @@ class DatabaseOperations(BaseDatabaseOperations):
             style.SQL_FIELD(self.quote_name(table))
         ) for table in tables]
         return sql
+
+    def last_executed_query(self, cursor, sql, params):
+        """
+        Return a string of the query last executed by the given cursor, with
+        placeholders replaced with actual values.
+
+        `sql` is the raw query containing placeholders and `params` is the
+        sequence of parameters.
+        NOTE: not really sure if that's the best way to do that but it works
+        """
+
+        # Convert params to contain string values.
+        def to_string(s):
+            return force_str(s, strings_only=True, errors="replace")
+
+        if isinstance(params, (list, tuple)):
+            u_params = tuple(to_string(val) for val in params)
+        elif params is None:
+            u_params = ()
+        else:
+            u_params = {to_string(k): to_string(v) for k, v in params.items()}
+
+        formatted_sql = sql.replace('?', "%r")
+        return formatted_sql % u_params
+    
+    def conditional_expression_supported_in_where_clause(self, expression):
+        return not isinstance(expression.output_field, CharToBooleanField)
 
     #def bulk_insert_sql(self, fields, placeholder_rows):
     #    placeholder_rows_sql = (", ".join(row) for row in placeholder_rows)

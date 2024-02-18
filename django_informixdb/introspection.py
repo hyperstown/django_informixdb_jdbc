@@ -43,6 +43,12 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             if column[1] in (InformixTypes.SQL_TYPE_NUMERIC.num, InformixTypes.SQL_TYPE_DECIMAL.num):
                 column[4] = int(column[3] / 256)
                 column[5] = column[3] - column[4] * 256
+            
+            # For some reason collation isn't added. Despite method description saying otherwise.
+            # simple and kinda dumb check. If there is no 9th argument in the list means 
+            # that collation hasn't been added so append None. 
+            if len(column) == 8:
+                column.append(None)
             items.append(FieldInfo(*column))
 
         return items

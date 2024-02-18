@@ -1,23 +1,23 @@
 from unittest.mock import Mock, call
 from datetime import timedelta
 
-import pyodbc
+#import pyodbc
 import pytest
 from freezegun import freeze_time
 
 from django_informixdb.base import DatabaseWrapper
 
 
-CONNECTION_FAILED_ERROR = pyodbc.Error(
-    "08004", "Attempt to connect to database server (<dbname>) failed. (-908) (SQLDriverConnect)"
-)
-READ_ERROR = pyodbc.Error(
-    "HY000", "Read error occurred during connection attempt. (-27001) (SQLDriverConnect)"
-)
-AUTHENTICATION_ERROR = pyodbc.Error(
-    "28000",
-    "Incorrect password or user is not known on the database server (-951) (SQLDriverConnect)"
-)
+# CONNECTION_FAILED_ERROR = pyodbc.Error(
+#     "08004", "Attempt to connect to database server (<dbname>) failed. (-908) (SQLDriverConnect)"
+# )
+# READ_ERROR = pyodbc.Error(
+#     "HY000", "Read error occurred during connection attempt. (-27001) (SQLDriverConnect)"
+# )
+# AUTHENTICATION_ERROR = pyodbc.Error(
+#     "28000",
+#     "Incorrect password or user is not known on the database server (-951) (SQLDriverConnect)"
+# )
 
 
 @pytest.fixture
@@ -144,34 +144,34 @@ def test_DatabaseWrapper_is_usable(mocker, mock_autocommit_methods, db_config):
     assert db.is_usable() is True
 
 
-def test_DatabaseWrapper_is_usable_returns_false_if_creating_cursor_fails(
-    caplog, mocker, mock_connection, mock_autocommit_methods, db_config
-):
-    mock_connection.cursor.side_effect = pyodbc.Error("", "error message 1")
-    db = DatabaseWrapper(db_config)
-    db.connect()
-    assert db.is_usable() is False
-    assert "error message 1" in caplog.text
+# def test_DatabaseWrapper_is_usable_returns_false_if_creating_cursor_fails(
+#     caplog, mocker, mock_connection, mock_autocommit_methods, db_config
+# ):
+#     mock_connection.cursor.side_effect = pyodbc.Error("", "error message 1")
+#     db = DatabaseWrapper(db_config)
+#     db.connect()
+#     assert db.is_usable() is False
+#     assert "error message 1" in caplog.text
 
 
-def test_DatabaseWrapper_is_usable_returns_false_if_execute_raises_error(
-    caplog, mocker, mock_connection, mock_autocommit_methods, db_config
-):
-    mock_connection.cursor.return_value.execute.side_effect = pyodbc.Error("", "error message 1")
-    db = DatabaseWrapper(db_config)
-    db.connect()
-    assert db.is_usable() is False
-    assert "error message 1" in caplog.text
+# def test_DatabaseWrapper_is_usable_returns_false_if_execute_raises_error(
+#     caplog, mocker, mock_connection, mock_autocommit_methods, db_config
+# ):
+#     mock_connection.cursor.return_value.execute.side_effect = pyodbc.Error("", "error message 1")
+#     db = DatabaseWrapper(db_config)
+#     db.connect()
+#     assert db.is_usable() is False
+#     assert "error message 1" in caplog.text
 
 
-def test_DatabaseWrapper_is_usable_returns_false_if_closing_cursor_raises_error(
-    caplog, mocker, mock_connection, mock_autocommit_methods, db_config
-):
-    mock_connection.cursor.return_value.close.side_effect = pyodbc.Error("", "error message 1")
-    db = DatabaseWrapper(db_config)
-    db.connect()
-    assert db.is_usable() is False
-    assert "error message 1" in caplog.text
+# def test_DatabaseWrapper_is_usable_returns_false_if_closing_cursor_raises_error(
+#     caplog, mocker, mock_connection, mock_autocommit_methods, db_config
+# ):
+#     mock_connection.cursor.return_value.close.side_effect = pyodbc.Error("", "error message 1")
+#     db = DatabaseWrapper(db_config)
+#     db.connect()
+#     assert db.is_usable() is False
+#     assert "error message 1" in caplog.text
 
 
 def test_DatabaseWrapper_get_new_connection_calls_pyodbc_connect(mock_connect, db_config):
@@ -193,53 +193,53 @@ def test_DatabaseWrapper_get_new_connection_calls_pyodbc_connect(mock_connect, d
     assert mock_connect.call_args[1]['timeout'] == 120
 
 
-def test_get_new_connection_doesnt_retry_by_default(mock_connect, db_config):
-    mock_connect.side_effect = READ_ERROR
-    db = DatabaseWrapper(db_config)
-    with pytest.raises(pyodbc.Error):
-        db.get_new_connection(db.get_connection_params())
-    assert mock_connect.call_count == 1
+# def test_get_new_connection_doesnt_retry_by_default(mock_connect, db_config):
+#     mock_connect.side_effect = READ_ERROR
+#     db = DatabaseWrapper(db_config)
+#     with pytest.raises(pyodbc.Error):
+#         db.get_new_connection(db.get_connection_params())
+#     assert mock_connect.call_count == 1
 
 
-def test_get_new_connection_retries_up_to_MAX_ATTEMPTS(mock_sleep, mock_connect, db_config):
-    mock_connect.side_effect = READ_ERROR
-    db = DatabaseWrapper({**db_config, "CONNECTION_RETRY": {"MAX_ATTEMPTS": 3}})
-    with pytest.raises(pyodbc.Error):
-        db.get_new_connection(db.get_connection_params())
-    assert mock_connect.call_count == 3
-    assert mock_sleep.call_count == 2
+# def test_get_new_connection_retries_up_to_MAX_ATTEMPTS(mock_sleep, mock_connect, db_config):
+#     mock_connect.side_effect = READ_ERROR
+#     db = DatabaseWrapper({**db_config, "CONNECTION_RETRY": {"MAX_ATTEMPTS": 3}})
+#     with pytest.raises(pyodbc.Error):
+#         db.get_new_connection(db.get_connection_params())
+#     assert mock_connect.call_count == 3
+#     assert mock_sleep.call_count == 2
 
 
-@pytest.mark.parametrize("error, expected_retries", [
-    (CONNECTION_FAILED_ERROR, 1),
-    (READ_ERROR, 1),
-    (AUTHENTICATION_ERROR, 0),
-    (pyodbc.Error("", "-27001"), 0),  # the error code must be surrounded by round brackets
-])
-def test_only_retries_certain_errors(mock_sleep, mock_connect, db_config, error, expected_retries):
-    mock_connect.side_effect = error
-    db = DatabaseWrapper({**db_config, "CONNECTION_RETRY": {"MAX_ATTEMPTS": 2}})
-    with pytest.raises(pyodbc.Error):
-        db.get_new_connection(db.get_connection_params())
-    assert mock_connect.call_count == 1 + expected_retries  # attempts = 1 + retries
+# @pytest.mark.parametrize("error, expected_retries", [
+#     (CONNECTION_FAILED_ERROR, 1),
+#     (READ_ERROR, 1),
+#     (AUTHENTICATION_ERROR, 0),
+#     (pyodbc.Error("", "-27001"), 0),  # the error code must be surrounded by round brackets
+# ])
+# def test_only_retries_certain_errors(mock_sleep, mock_connect, db_config, error, expected_retries):
+#     mock_connect.side_effect = error
+#     db = DatabaseWrapper({**db_config, "CONNECTION_RETRY": {"MAX_ATTEMPTS": 2}})
+#     with pytest.raises(pyodbc.Error):
+#         db.get_new_connection(db.get_connection_params())
+#     assert mock_connect.call_count == 1 + expected_retries  # attempts = 1 + retries
 
 
-@pytest.mark.parametrize("error, expected_retries", [
-    (CONNECTION_FAILED_ERROR, 0),
-    (pyodbc.Error("", "(-12345)"), 1),
-])
-def test_errors_to_retry_can_be_overridden(mock_sleep, mock_connect, db_config, error, expected_retries):
-    mock_connect.side_effect = error
-    db = DatabaseWrapper({
-        **db_config,
-        "CONNECTION_RETRY": {
-            "MAX_ATTEMPTS": 2,
-            "ERRORS": ["-12345"],
-        },
-    })
-    with pytest.raises(pyodbc.Error):
-        db.get_new_connection(db.get_connection_params())
-    assert mock_connect.call_count == 1 + expected_retries
+# @pytest.mark.parametrize("error, expected_retries", [
+#     (CONNECTION_FAILED_ERROR, 0),
+#     (pyodbc.Error("", "(-12345)"), 1),
+# ])
+# def test_errors_to_retry_can_be_overridden(mock_sleep, mock_connect, db_config, error, expected_retries):
+#     mock_connect.side_effect = error
+#     db = DatabaseWrapper({
+#         **db_config,
+#         "CONNECTION_RETRY": {
+#             "MAX_ATTEMPTS": 2,
+#             "ERRORS": ["-12345"],
+#         },
+#     })
+#     with pytest.raises(pyodbc.Error):
+#         db.get_new_connection(db.get_connection_params())
+#     assert mock_connect.call_count == 1 + expected_retries
 
 
 def test_get_new_connection_breaks_early_if_connection_succeeds(
@@ -252,30 +252,30 @@ def test_get_new_connection_breaks_early_if_connection_succeeds(
     assert mock_sleep.call_count == 1
 
 
-def test_sleeps_between_connection_attempts(mocker, mock_sleep, mock_connect, db_config):
-    mock_uniform = mocker.patch(
-        "random.uniform",
-        autospec=True,
-        side_effect=[1000, 2000, 3000, 4000, 5000],
-    )
-    mock_connect.side_effect = READ_ERROR
-    db = DatabaseWrapper({
-        **db_config,
-        "CONNECTION_RETRY": {
-            "MAX_ATTEMPTS": 6,
-            "WAIT_MIN": 15,
-            "WAIT_MAX": 100,
-            "WAIT_MULTIPLIER": 10,
-            "WAIT_EXP_BASE": 2,
-        },
-    })
-    with pytest.raises(pyodbc.Error):
-        db.get_new_connection(db.get_connection_params())
-    assert mock_uniform.call_args_list == [
-        call(15, 15),
-        call(15, 20),
-        call(15, 40),
-        call(15, 80),
-        call(15, 100),
-    ]
-    assert mock_sleep.call_args_list == [call(1), call(2), call(3), call(4), call(5)]
+# def test_sleeps_between_connection_attempts(mocker, mock_sleep, mock_connect, db_config):
+#     mock_uniform = mocker.patch(
+#         "random.uniform",
+#         autospec=True,
+#         side_effect=[1000, 2000, 3000, 4000, 5000],
+#     )
+#     mock_connect.side_effect = READ_ERROR
+#     db = DatabaseWrapper({
+#         **db_config,
+#         "CONNECTION_RETRY": {
+#             "MAX_ATTEMPTS": 6,
+#             "WAIT_MIN": 15,
+#             "WAIT_MAX": 100,
+#             "WAIT_MULTIPLIER": 10,
+#             "WAIT_EXP_BASE": 2,
+#         },
+#     })
+#     with pytest.raises(pyodbc.Error):
+#         db.get_new_connection(db.get_connection_params())
+#     assert mock_uniform.call_args_list == [
+#         call(15, 15),
+#         call(15, 20),
+#         call(15, 40),
+#         call(15, 80),
+#         call(15, 100),
+#     ]
+#     assert mock_sleep.call_args_list == [call(1), call(2), call(3), call(4), call(5)]
