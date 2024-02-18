@@ -288,6 +288,16 @@ Version 1.0.0
 
 - Initial public release
 
+**FAQ**:
+
+Q: Boolean fields doesn't work. How to fix it?
+A: Import `CharToBooleanField` or `CharToBooleanField2` from `django_informixdb.fields`
+Depending on your Informix config it will accept t/f or Y/N values. Choose accordingly.
+
+Q: Can't save anything that contains date field.
+A: Depending of your locale Informix will accept different date formats. 
+Set your date format in settings like this `DEFAULT_DATE_FORMAT='%d/%m/%Y'`
+
 
 **TODO**:
 
